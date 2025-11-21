@@ -1,37 +1,53 @@
 import express from "express";
 import { register, login, verifyOtp } from "../services/authService.js";
-import User from "../helpers/userModel.js";  // <-- IMPORTANT: user model import
+import bcrypt from "bcryptjs";
+import { GoogleSpreadsheet } from "google-spreadsheet";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const router = express.Router();
 
-// TEMPORARY: Create Admin User (DELETE AFTER USE)
+// TEMPORARY ADMIN CREATION ROUTE — DELETE AFTER USE
 router.get("/create-admin", async (req, res) => {
   try {
-    const adminEmail = "isgecpulse@outlook.com";
+    const email = "isgecpulse@outlook.com";
+    const password = "Ashuwari_007";
 
-    // check already exists?
-    const exists = await User.findOne({ email: adminEmail });
+    const doc = new GoogleSpreadsheet(process.env.GSHEET_ID);
+
+    await doc.useServiceAccountAuth({
+      client_email: process.env.GSHEET_CLIENT_EMAIL,
+      private_key: process.env.GSHEET_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    });
+
+    await doc.loadInfo();
+    const sheet = doc.sheetsByIndex[0];
+
+    const rows = await sheet.getRows();
+    const exists = rows.find(r => r.Email === email);
+
     if (exists) {
       return res.json({ message: "Admin already exists" });
     }
 
-    const admin = new User({
-      name: "Admin",
-      email: adminEmail,
-      password: "Ashuwari_007",
-      isVerified: true,
-      role: "admin",
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await sheet.addRow({
+      Email: email,
+      Name: "Admin User",
+      Password: hashedPassword,
+      Verified: "TRUE",
+      CreatedAt: new Date().toISOString()
     });
 
-    await admin.save();
-
-    res.json({ message: "Admin user created successfully!" });
+    res.json({ message: "Admin created successfully!" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Registration Route - triggers OTP to email
+// Registration Route
 router.post("/register", async (req, res) => {
   const { email, name, password } = req.body;
   try {
@@ -65,4 +81,3 @@ router.post("/login", async (req, res) => {
 });
 
 export default router;
-
