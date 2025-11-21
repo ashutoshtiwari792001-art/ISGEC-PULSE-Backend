@@ -1,6 +1,7 @@
 {
   "name": "isgec-pulse-backend",
   "version": "1.0.0",
+  "type": "module",
   "description": "Backend API for ISGEC PULSE",
   "main": "app.js",
   "scripts": {
