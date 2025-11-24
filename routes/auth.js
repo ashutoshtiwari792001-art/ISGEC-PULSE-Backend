@@ -1,6 +1,6 @@
 import express from "express";
 import bcrypt from "bcryptjs";
-import { GoogleSpreadsheet } from "@theoephraim/node-google-spreadsheet";
+import axios from "axios";
 import dotenv from "dotenv";
 import { register, login, verifyOtp } from "../services/authService.js";
 
@@ -9,53 +9,64 @@ dotenv.config();
 const router = express.Router();
 
 /* ---------------------------------------------------------
-   🌟 TEMPORARY ADMIN CREATION ROUTE — run once then delete
+   🌟 CREATE ADMIN USING GOOGLE SHEETS REST API (NO PACKAGES)
 --------------------------------------------------------- */
 router.get("/create-admin-now", async (req, res) => {
   try {
     const email = "isgecpulse@outlook.com";
     const password = "Ashuwari_007";
 
-    const doc = new GoogleSpreadsheet(process.env.GSHEET_ID);
-    await doc.useServiceAccountAuth({
-      client_email: process.env.GSHEET_CLIENT_EMAIL,
-      private_key: process.env.GSHEET_PRIVATE_KEY.replace(/\\n/g, "\n"),
-    });
+    const SHEET_ID = process.env.GSHEET_ID;
+    const API_KEY = process.env.GSHEET_API_KEY;
 
-    await doc.loadInfo();
-    const sheet = doc.sheetsByIndex[0];
+    // 1) READ rows
+    const readUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1?key=${API_KEY}`;
+    const readRes = await axios.get(readUrl);
+    const rows = readRes.data.values || [];
 
-    const rows = await sheet.getRows();
-    const exists = rows.find((r) => r.Email === email);
+    const headers = rows[0];
+    const emailIndex = headers.indexOf("Email");
+
+    const exists = rows.find(r => r[emailIndex] === email);
 
     if (exists) {
       return res.json({ message: "Admin already exists" });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Hash password
+    const hashed = await bcrypt.hash(password, 10);
 
-    await sheet.addRow({
-      Email: email,
-      Name: "Admin User",
-      Password: hashedPassword,
-      Verified: "TRUE",
-      OTP: "",
-      OTPExpire: "",
-      CreatedAt: new Date().toISOString(),
+    // 2) APPEND admin row
+    const appendUrl = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1:append?valueInputOption=RAW&key=${API_KEY}`;
+
+    const newRow = [
+      email,
+      "Admin User",
+      hashed,
+      "TRUE",
+      "",
+      "",
+      new Date().toISOString()
+    ];
+
+    await axios.post(appendUrl, {
+      range: "Sheet1",
+      majorDimension: "ROWS",
+      values: [newRow]
     });
 
     res.json({ message: "Admin created successfully!" });
+
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
 /* ---------------------------------------------------------
-   REGISTER USER → Send OTP
+   REGISTER
 --------------------------------------------------------- */
 router.post("/register", async (req, res) => {
   const { email, name, password } = req.body;
-
   try {
     const response = await register({ email, name, password });
     res.json(response);
@@ -69,7 +80,6 @@ router.post("/register", async (req, res) => {
 --------------------------------------------------------- */
 router.post("/verify-otp", async (req, res) => {
   const { email, otp } = req.body;
-
   try {
     const response = await verifyOtp({ email, otp });
     res.json(response);
@@ -79,11 +89,10 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 /* ---------------------------------------------------------
-   LOGIN USER
+   LOGIN
 --------------------------------------------------------- */
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
-
   try {
     const response = await login({ email, password });
     res.json(response);
