@@ -1,6 +1,6 @@
 import express from "express";
 import bcrypt from "bcryptjs";
-import { GoogleSpreadsheet } from "google-spreadsheet";
+import { GoogleSpreadsheet } from "@theoephraim/node-google-spreadsheet";
 import dotenv from "dotenv";
 import { register, login, verifyOtp } from "../services/authService.js";
 
